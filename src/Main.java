@@ -1,11 +1,14 @@
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -27,6 +30,7 @@ public class Main {
              Connection connection = DB.getConnection()) {
 
             ensureCoreTables(connection);
+            ensureSeedData(connection);
             createBillSummaryArtifacts(connection);
             ensurePatientAppointmentsView(connection);
 
@@ -312,17 +316,26 @@ public class Main {
         System.out.println("  3. Ask you to COMMIT or ROLLBACK");
         System.out.println();
 
+        int patientId = promptInt(scanner, "Patient ID");
+        int doctorId = promptInt(scanner, "Doctor ID (staff_id)");
+        Timestamp appointmentTime = promptTimestamp(scanner, "Appointment time (yyyy-MM-dd HH:mm)");
+        String reason = promptString(scanner, "Reason for visit");
+        int statusId = promptInt(scanner, "Status ID (1=Scheduled, 2=Completed, 3=Cancelled)");
+        String noteFragment = promptString(scanner, "Note text to append to patient record");
+
         try {
+            if (!assertEntityExists(connection, "SELECT 1 FROM Patient WHERE patient_id = ?", patientId, "Patient")) {
+                return;
+            }
+            if (!assertEntityExists(connection, "SELECT 1 FROM Doctor WHERE staff_id = ?", doctorId, "Doctor")) {
+                return;
+            }
+            if (!assertEntityExists(connection, "SELECT 1 FROM AppointmentStatus WHERE status_id = ?", statusId, "Status")) {
+                return;
+            }
+
             connection.setAutoCommit(false);
 
-            int patientId = promptInt(scanner, "Patient ID");
-            int doctorId = promptInt(scanner, "Doctor ID (staff_id)");
-            Timestamp appointmentTime = promptTimestamp(scanner, "Appointment time (yyyy-MM-dd HH:mm)");
-            String reason = promptString(scanner, "Reason for visit");
-            int statusId = promptInt(scanner, "Status ID (1=Scheduled, 2=Completed, 3=Cancelled)");
-            String noteFragment = promptString(scanner, "Note text to append to patient record");
-
-            // Step 1: Insert appointment
             String insertAppointment = "INSERT INTO Appointment (patient_id, doctor_id, scheduled_at, reason, status_id) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement ps = connection.prepareStatement(insertAppointment)) {
                 ps.setInt(1, patientId);
@@ -331,16 +344,15 @@ public class Main {
                 ps.setString(4, reason);
                 ps.setInt(5, statusId);
                 int rows = ps.executeUpdate();
-                System.out.println("✓ Step 1: Inserted " + rows + " appointment(s)");
+                System.out.println("\u2713 Step 1: Inserted " + rows + " appointment(s)");
             }
 
-            // Step 2: Update patient notes
             String updateNotes = "UPDATE Patient SET notes = CONCAT(COALESCE(notes, ''), ?) WHERE patient_id = ?";
             try (PreparedStatement ps = connection.prepareStatement(updateNotes)) {
                 ps.setString(1, "\n[Appointment Scheduled] " + noteFragment);
                 ps.setInt(2, patientId);
                 int rows = ps.executeUpdate();
-                System.out.println("✓ Step 2: Updated " + rows + " patient record(s)");
+                System.out.println("\u2713 Step 2: Updated " + rows + " patient record(s)");
             }
 
             System.out.println("\n>>> Transaction ready. Commit or rollback? (y=COMMIT / n=ROLLBACK): ");
@@ -349,15 +361,15 @@ public class Main {
 
             if (choice.equalsIgnoreCase("y")) {
                 connection.commit();
-                System.out.println("✓✓✓ Transaction COMMITTED successfully! ✓✓✓");
+                System.out.println("\u2713\u2713\u2713 Transaction COMMITTED successfully! \u2713\u2713\u2713");
             } else {
                 connection.rollback();
-                System.out.println("✗✗✗ Transaction ROLLED BACK - no changes made. ✗✗✗");
+                System.out.println("\u2717\u2717\u2717 Transaction ROLLED BACK - no changes made. \u2717\u2717\u2717");
             }
         } catch (SQLException ex) {
             try {
                 connection.rollback();
-                System.out.println("✗✗✗ Transaction ROLLED BACK due to error. ✗✗✗");
+                System.out.println("\u2717\u2717\u2717 Transaction ROLLED BACK due to error. \u2717\u2717\u2717");
             } catch (SQLException rollbackEx) {
                 System.out.println("CRITICAL: Rollback failed: " + rollbackEx.getMessage());
             }
@@ -381,18 +393,28 @@ public class Main {
         System.out.println("  4. Let you COMMIT or ROLLBACK the whole workflow");
         System.out.println();
 
-        try {
-            connection.setAutoCommit(false);
+        int patientId = promptInt(scanner, "Patient ID");
+        int doctorId = promptInt(scanner, "Doctor ID (staff_id)");
+        Timestamp appointmentTime = promptTimestamp(scanner, "Appointment time (yyyy-MM-dd HH:mm)");
+        String reason = promptString(scanner, "Reason (optional, blank allowed)");
+        if (reason.isEmpty()) {
+            reason = null;
+        }
+        int statusId = promptInt(scanner, "Status ID (1=Scheduled, 2=Completed, 3=Cancelled)");
+        String noteFragment = promptString(scanner, "Note text to append to patient record");
 
-            int patientId = promptInt(scanner, "Patient ID");
-            int doctorId = promptInt(scanner, "Doctor ID (staff_id)");
-            Timestamp appointmentTime = promptTimestamp(scanner, "Appointment time (yyyy-MM-dd HH:mm)");
-            String reason = promptString(scanner, "Reason (optional, blank allowed)");
-            if (reason.isEmpty()) {
-                reason = null;
+        try {
+            if (!assertEntityExists(connection, "SELECT 1 FROM Patient WHERE patient_id = ?", patientId, "Patient")) {
+                return;
             }
-            int statusId = promptInt(scanner, "Status ID (1=Scheduled, 2=Completed, 3=Cancelled)");
-            String noteFragment = promptString(scanner, "Note text to append to patient record");
+            if (!assertEntityExists(connection, "SELECT 1 FROM Doctor WHERE staff_id = ?", doctorId, "Doctor")) {
+                return;
+            }
+            if (!assertEntityExists(connection, "SELECT 1 FROM AppointmentStatus WHERE status_id = ?", statusId, "Status")) {
+                return;
+            }
+
+            connection.setAutoCommit(false);
 
             int newAppointmentId;
             String insertAppointment = "INSERT INTO Appointment (patient_id, doctor_id, scheduled_at, reason, status_id) VALUES (?, ?, ?, ?, ?)";
@@ -407,7 +429,7 @@ public class Main {
                 }
                 ps.setInt(5, statusId);
                 int rows = ps.executeUpdate();
-                System.out.println("✓ Step 1: Inserted " + rows + " appointment(s)");
+                System.out.println("\u2713 Step 1: Inserted " + rows + " appointment(s)");
 
                 try (ResultSet keys = ps.getGeneratedKeys()) {
                     if (keys.next()) {
@@ -423,7 +445,7 @@ public class Main {
                 ps.setInt(1, patientId);
                 ps.setInt(2, newAppointmentId);
                 int rows = ps.executeUpdate();
-                System.out.println("✓ Step 2: Inserted " + rows + " bill(s)");
+                System.out.println("\u2713 Step 2: Inserted " + rows + " bill(s)");
             }
 
             String updateNotes = "UPDATE Patient SET notes = CONCAT(COALESCE(notes, ''), ?) WHERE patient_id = ?";
@@ -431,7 +453,7 @@ public class Main {
                 ps.setString(1, "\n[Billing Transaction] " + noteFragment);
                 ps.setInt(2, patientId);
                 int rows = ps.executeUpdate();
-                System.out.println("✓ Step 3: Updated " + rows + " patient record(s)");
+                System.out.println("\u2713 Step 3: Updated " + rows + " patient record(s)");
             }
 
             System.out.println("\n>>> Transaction ready. Commit or rollback? (y=COMMIT / n=ROLLBACK): ");
@@ -440,15 +462,15 @@ public class Main {
 
             if (choice.equalsIgnoreCase("y")) {
                 connection.commit();
-                System.out.println("✓✓✓ Billing transaction COMMITTED successfully! ✓✓✓");
+                System.out.println("\u2713\u2713\u2713 Billing transaction COMMITTED successfully! \u2713\u2713\u2713");
             } else {
                 connection.rollback();
-                System.out.println("✗✗✗ Billing transaction ROLLED BACK - no changes made. ✗✗✗");
+                System.out.println("\u2717\u2717\u2717 Billing transaction ROLLED BACK - no changes made. \u2717\u2717\u2717");
             }
         } catch (SQLException ex) {
             try {
                 connection.rollback();
-                System.out.println("✗✗✗ Billing transaction ROLLED BACK due to error. ✗✗✗");
+                System.out.println("\u2717\u2717\u2717 Billing transaction ROLLED BACK due to error. \u2717\u2717\u2717");
             } catch (SQLException rollbackEx) {
                 System.out.println("CRITICAL: Rollback failed: " + rollbackEx.getMessage());
             }
@@ -656,6 +678,19 @@ public class Main {
                         "first_name VARCHAR(50) NOT NULL," +
                         "last_name VARCHAR(50) NOT NULL," +
                         "date_of_birth DATETIME NOT NULL)"},
+                {"staffrole", "CREATE TABLE StaffRole (" +
+                        "staff_role_id INT PRIMARY KEY AUTO_INCREMENT," +
+                        "name VARCHAR(50) NOT NULL UNIQUE)"},
+                {"specialty", "CREATE TABLE Specialty (" +
+                        "specialty_id INT PRIMARY KEY AUTO_INCREMENT," +
+                        "name VARCHAR(50) NOT NULL UNIQUE," +
+                        "base_visit_fee DECIMAL(10,2) NOT NULL)"},
+                {"department", "CREATE TABLE Department (" +
+                        "department_id INT PRIMARY KEY AUTO_INCREMENT," +
+                        "name VARCHAR(100) NOT NULL," +
+                        "building_number VARCHAR(10)," +
+                        "floor INT," +
+                        "capacity INT)"},
                 {"patient", "CREATE TABLE Patient (" +
                         "patient_id INT PRIMARY KEY," +
                         "insurance_id VARCHAR(50)," +
@@ -665,11 +700,16 @@ public class Main {
                         "staff_id INT PRIMARY KEY," +
                         "staff_role_id INT NOT NULL," +
                         "department_id INT NOT NULL," +
-                        "hire_date DATE NOT NULL)"},
+                        "hire_date DATE NOT NULL," +
+                        "FOREIGN KEY (staff_id) REFERENCES Person(person_id) ON DELETE CASCADE," +
+                        "FOREIGN KEY (staff_role_id) REFERENCES StaffRole(staff_role_id)," +
+                        "FOREIGN KEY (department_id) REFERENCES Department(department_id))"},
                 {"doctor", "CREATE TABLE Doctor (" +
                         "staff_id INT PRIMARY KEY," +
                         "specialty_id INT NOT NULL," +
-                        "license_no VARCHAR(50) UNIQUE)"},
+                        "license_no VARCHAR(50) UNIQUE," +
+                        "FOREIGN KEY (staff_id) REFERENCES Staff(staff_id) ON DELETE CASCADE," +
+                        "FOREIGN KEY (specialty_id) REFERENCES Specialty(specialty_id))"},
                 {"appointmentstatus", "CREATE TABLE AppointmentStatus (" +
                         "status_id INT PRIMARY KEY AUTO_INCREMENT," +
                         "status VARCHAR(30) NOT NULL UNIQUE)"},
@@ -679,12 +719,17 @@ public class Main {
                         "doctor_id INT NOT NULL," +
                         "scheduled_at DATETIME NOT NULL," +
                         "reason VARCHAR(255)," +
-                        "status_id INT NOT NULL)"},
+                        "status_id INT NOT NULL," +
+                        "FOREIGN KEY (patient_id) REFERENCES Patient(patient_id)," +
+                        "FOREIGN KEY (doctor_id) REFERENCES Doctor(staff_id)," +
+                        "FOREIGN KEY (status_id) REFERENCES AppointmentStatus(status_id))"},
                 {"bill", "CREATE TABLE Bill (" +
                         "bill_no INT PRIMARY KEY AUTO_INCREMENT," +
                         "patient_id INT NOT NULL," +
                         "appointment_id INT," +
-                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"}
+                        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP," +
+                        "FOREIGN KEY (patient_id) REFERENCES Patient(patient_id)," +
+                        "FOREIGN KEY (appointment_id) REFERENCES Appointment(appointment_id))"}
         };
 
         DatabaseMetaData meta = connection.getMetaData();
@@ -710,5 +755,179 @@ public class Main {
         try (Statement stmt = connection.createStatement()) {
             stmt.executeUpdate("CREATE FUNCTION IF NOT EXISTS GetPatientBalance(p_patient_id INT) RETURNS DECIMAL(10,2) DETERMINISTIC RETURN 0");
         } catch (SQLException ignored) { }
+    }
+
+    private static void ensureSeedData(Connection connection) throws SQLException {
+        ensureAppointmentStatusesSeed(connection);
+        ensureDemoPatient(connection);
+        ensureDemoDoctor(connection);
+    }
+
+    private static void ensureAppointmentStatusesSeed(Connection connection) throws SQLException {
+        String[] statuses = {"Scheduled", "Completed", "Cancelled"};
+        for (String status : statuses) {
+            if (!valueExists(connection, "SELECT 1 FROM AppointmentStatus WHERE status = ?", status)) {
+                try (PreparedStatement ps = connection.prepareStatement("INSERT INTO AppointmentStatus(status) VALUES (?)")) {
+                    ps.setString(1, status);
+                    ps.executeUpdate();
+                }
+            }
+        }
+    }
+
+    private static void ensureDemoPatient(Connection connection) throws SQLException {
+        final String insurance = "DEMO-INS-001";
+        if (valueExists(connection, "SELECT 1 FROM Patient WHERE insurance_id = ?", insurance)) {
+            return;
+        }
+        int personId = insertPerson(connection, "Demo", "Patient", LocalDate.of(1995, 1, 1));
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO Patient (patient_id, insurance_id, notes) VALUES (?, ?, ?)")) {
+            ps.setInt(1, personId);
+            ps.setString(2, insurance);
+            ps.setString(3, "Auto-generated demo patient");
+            ps.executeUpdate();
+        }
+    }
+
+    private static void ensureDemoDoctor(Connection connection) throws SQLException {
+        final String license = "DEMO-LIC-001";
+        if (valueExists(connection, "SELECT 1 FROM Doctor WHERE license_no = ?", license)) {
+            return;
+        }
+        int staffRoleId = ensureStaffRole(connection, "Doctor");
+        int departmentId = ensureDepartment(connection, "General Medicine", "A", 1, 20);
+        int specialtyId = ensureSpecialty(connection, "General Medicine", new BigDecimal("150.00"));
+        int personId = insertPerson(connection, "Demo", "Doctor", LocalDate.of(1980, 6, 15));
+
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO Staff (staff_id, staff_role_id, department_id, hire_date) VALUES (?, ?, ?, ?)")) {
+            ps.setInt(1, personId);
+            ps.setInt(2, staffRoleId);
+            ps.setInt(3, departmentId);
+            ps.setDate(4, Date.valueOf(LocalDate.now().minusYears(5)));
+            ps.executeUpdate();
+        }
+
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO Doctor (staff_id, specialty_id, license_no) VALUES (?, ?, ?)")) {
+            ps.setInt(1, personId);
+            ps.setInt(2, specialtyId);
+            ps.setString(3, license);
+            ps.executeUpdate();
+        }
+    }
+
+    private static int ensureStaffRole(Connection connection, String name) throws SQLException {
+        String select = "SELECT staff_role_id FROM StaffRole WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(select)) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO StaffRole(name) VALUES (?)", Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, name);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Could not ensure staff role " + name);
+    }
+
+    private static int ensureDepartment(Connection connection, String name, String building, int floor, int capacity) throws SQLException {
+        String select = "SELECT department_id FROM Department WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(select)) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO Department(name, building_number, floor, capacity) VALUES (?, ?, ?, ?)",
+                Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, name);
+            ps.setString(2, building);
+            ps.setInt(3, floor);
+            ps.setInt(4, capacity);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Could not ensure department " + name);
+    }
+
+    private static int ensureSpecialty(Connection connection, String name, BigDecimal baseVisitFee) throws SQLException {
+        String select = "SELECT specialty_id FROM Specialty WHERE name = ?";
+        try (PreparedStatement ps = connection.prepareStatement(select)) {
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+        }
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO Specialty(name, base_visit_fee) VALUES (?, ?)",
+                Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, name);
+            ps.setBigDecimal(2, baseVisitFee);
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Could not ensure specialty " + name);
+    }
+
+    private static int insertPerson(Connection connection, String firstName, String lastName, LocalDate dob) throws SQLException {
+        String sql = "INSERT INTO Person (first_name, last_name, date_of_birth) VALUES (?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, firstName);
+            ps.setString(2, lastName);
+            ps.setTimestamp(3, Timestamp.valueOf(dob.atStartOfDay()));
+            ps.executeUpdate();
+            try (ResultSet keys = ps.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return keys.getInt(1);
+                }
+            }
+        }
+        throw new SQLException("Could not insert person record");
+    }
+
+    private static boolean valueExists(Connection connection, String sql, String value) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, value);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+
+    private static boolean assertEntityExists(Connection connection, String sql, int id, String label) throws SQLException {
+        if (entityExists(connection, sql, id)) {
+            return true;
+        }
+        System.out.println(label + " ID " + id + " does not exist. Operation cancelled.");
+        return false;
+    }
+
+    private static boolean entityExists(Connection connection, String sql, int id) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 }
