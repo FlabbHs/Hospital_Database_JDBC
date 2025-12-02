@@ -1,0 +1,6 @@
+# Example DB config (commit this file; do NOT commit db.properties)
+# Copy to src/db.properties and fill in your real credentials locally.
+url=jdbc:mysql://localhost:3306/Hospital?useSSL=false&serverTimezone=UTC
+user=hospital_app
+password=change_me
+
