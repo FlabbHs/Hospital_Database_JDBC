@@ -3,6 +3,31 @@
 -- HOSPITAL DATABASE SCHEMA
 -- ========================
 
+CREATE DATABASE IF NOT EXISTS Hospital;
+USE Hospital;
+
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TRIGGER IF EXISTS trg_set_bill_timestamp;
+DROP VIEW IF EXISTS BillSummary;
+DROP FUNCTION IF EXISTS GetPatientBalance;
+DROP TABLE IF EXISTS BillItem;
+DROP TABLE IF EXISTS Bill;
+DROP TABLE IF EXISTS Service;
+DROP TABLE IF EXISTS PrescriptionItem;
+DROP TABLE IF EXISTS Medication;
+DROP TABLE IF EXISTS Prescription;
+DROP TABLE IF EXISTS Appointment;
+DROP TABLE IF EXISTS AppointmentStatus;
+DROP TABLE IF EXISTS Doctor;
+DROP TABLE IF EXISTS Staff;
+DROP TABLE IF EXISTS Patient;
+DROP TABLE IF EXISTS Contact;
+DROP TABLE IF EXISTS StaffRole;
+DROP TABLE IF EXISTS Specialty;
+DROP TABLE IF EXISTS Department;
+DROP TABLE IF EXISTS Person;
+SET FOREIGN_KEY_CHECKS = 1;
+
 -- 1. PERSON
 CREATE TABLE Person (
     person_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -172,21 +197,14 @@ CREATE TABLE BillItem (
 );
 
 -- ======================
- -- TRIGGER EXAMPLE
+-- TRIGGER EXAMPLE
 -- ======================
 
 -- Automatically set created_at if not provided on insert
-DELIMITER //
 CREATE TRIGGER trg_set_bill_timestamp
 BEFORE INSERT ON Bill
 FOR EACH ROW
-BEGIN
-    IF NEW.created_at IS NULL THEN
-        SET NEW.created_at = NOW();
-    END IF;
-END;
-//
-DELIMITER ;
+SET NEW.created_at = COALESCE(NEW.created_at, NOW());
 
 -- ======================
 -- INDEX EXAMPLES
@@ -195,6 +213,41 @@ DELIMITER ;
 CREATE INDEX idx_appointment_status ON Appointment(status_id);
 CREATE INDEX idx_prescription_doctor ON Prescription(doctor_id);
 CREATE INDEX idx_billitem_service ON BillItem(service_id);
+
+-- ======================
+-- VIEW FOR REPORTING
+-- ======================
+CREATE VIEW BillSummary AS
+SELECT b.bill_no,
+       b.patient_id,
+       p.first_name,
+       p.last_name,
+       b.appointment_id,
+       b.created_at,
+       COALESCE(SUM(bi.amount), 0) AS total_amount
+FROM Bill b
+JOIN Patient pt ON pt.patient_id = b.patient_id
+JOIN Person p ON p.person_id = pt.patient_id
+LEFT JOIN BillItem bi ON bi.bill_no = b.bill_no
+GROUP BY b.bill_no, b.patient_id, p.first_name, p.last_name, b.appointment_id, b.created_at;
+
+-- ======================
+-- FUNCTION FOR BILL TOTALS
+-- ======================
+DELIMITER //
+CREATE FUNCTION GetPatientBalance(p_patient_id INT)
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    DECLARE total DECIMAL(10,2);
+    SELECT COALESCE(SUM(bi.amount), 0)
+      INTO total
+      FROM Bill b
+      LEFT JOIN BillItem bi ON bi.bill_no = b.bill_no
+     WHERE b.patient_id = p_patient_id;
+    RETURN total;
+END;//
+DELIMITER ;
 
 -- ======================
 -- SAMPLE DATA
