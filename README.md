@@ -32,9 +32,10 @@ Hospital_Database_JDBC-main/
 - PatientTable.java, AppointmentTable.java, BillTable.java
 
   Contains CRUD operations and SQL interaction for each database table.
-- Db.properties.example
+- Db.properties.example (replace or duplicate as db.properties which functions as app.properties)
 
   Example configuration file showing how to store database connection settings.
+  
 - Create_and_populate.sql
 
   SQL script used to create all tables and insert initial data.
@@ -44,7 +45,7 @@ Hospital_Database_JDBC-main/
   Creates the MySQL user and assigns privileges.
 - Test_database.sql
 
-  Creates sample tables and test data (alternative to create_and_populate.sql depending on workflow).
+  Verifies that the database is functioning correctly
 
 
 ###  Setup
@@ -75,7 +76,7 @@ Then edit db.properties to match your MySQL username, password, and database nam
 - Run Main.java
 - Use the console menu to interact with the hospital database
 
-Features
+### Features
 - View, insert, and update hospital records (patients, appointments, bills)
 - JDBC-based MySQL connectivity
 - Transaction control using manual commit and rollback
