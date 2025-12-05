@@ -1,0 +1,6 @@
+Madison Ammirati: Created the Demo Video and created the queries to populate the database.
+Sonny Au: Created and edited the UI for the JDBC.
+Sunny Doan: Connected the JDBC queries with the database. 
+Hieuson Dang: Created the view, stored procedures and helped connect the queries to the database. 
+
+Overall our teamwork was done well and mostly done asynchronously. We broke down the tasks into three groups one being 2 people and the others being done by one person. First Sonny did the UI that he pushed to GitHub and let Sunny know that it was ready to be connected to the database. Sunny and Hieuson worked on connecting it to the database and Hieuson then created the view and store procedures. Once he was finished with that and ran a few tests he let Madison know that it was ready. She made a script for the video that the others reviewed and then she created the queries and recorded the video. Throughout the process we were messaging and checking our work with one another. At the end we broke up the work for the Ai log, readme, and team-roles documents by each discussing what our portion was and having one person put these into the document and push it to the GitHub. 
